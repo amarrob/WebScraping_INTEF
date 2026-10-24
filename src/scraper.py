@@ -188,3 +188,7 @@ class CursosScraper():
             encoding="utf-8-sig"
         )
         print(f"\nDataset guardado correctamente en: {filename}")
+        """ Dataset de muestra para GitHub"""
+        sample_file = filename.replace(".csv", "_sample.csv")
+        df.head(20).to_csv(sample_file,index=False,encoding="utf-8-sig")
+        print(f"Muestra guardada correctamente en: {sample_file}")
