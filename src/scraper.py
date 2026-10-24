@@ -1,6 +1,13 @@
 import re
 import pandas as pd
 from utils import (create_session,download_html,get_soup)
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.edge.options import Options
+from selenium.webdriver.edge.service import Service
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
 class CursosScraper():        
     def __init__(self):
@@ -31,11 +38,13 @@ class CursosScraper():
     def __get_course_links(self, html):
         soup = get_soup(html)
         courses = []
+        seen = set()
         for a in soup.find_all("a", href=True):
             href = a["href"]
             text = a.get_text(strip=True)
-            if "course/view.php?id=" in href:
-                courses.append({"titulo":text.replace("Curso:","").strip(),"url":href})
+            if "course/view.php?id=" in href and href not in seen:
+                seen.add(href)
+                courses.append({"titulo": text.replace("Curso:", "").strip(),"url": href})
         return courses
 
     def __get_course_id(self, url):
@@ -78,7 +87,29 @@ class CursosScraper():
             return text.split(inicio)[1].split(fin)[0].strip()
         except:
            return ""
-        
+            
+    def __get_formacion_abierta_pages(self):
+        options = Options()
+        options.add_argument("--headless")
+        options.add_argument(f"user-agent={self.user_agent}")
+        driver = webdriver.Edge(service=Service(EdgeChromiumDriverManager().install()),options=options)
+        driver.get(self.abierta_url)
+        pages_html = []
+        while True:
+            WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CLASS_NAME, "course-list")))
+            pages_html.append(driver.page_source)
+            try:
+                next_button = driver.find_element(By.XPATH,"//a[contains(text(),'»')]")
+                parent = next_button.find_element(By.XPATH, "..")
+                if "disabled" in parent.get_attribute("class"):
+                    break
+                driver.execute_script("arguments[0].click();",next_button)
+                WebDriverWait(driver, 10).until(EC.staleness_of(parent))
+            except:
+                break
+        driver.quit()
+        return pages_html
+    
     def __scrape_course(self, course):
         html = download_html(self.session, course["url"])
         soup = get_soup(html)
@@ -110,32 +141,31 @@ class CursosScraper():
                     self.data.append(course_data)
                     
     def scrape_formacion_abierta(self):
-        html = download_html(self.session, self.abierta_url)
-        soup = get_soup(html)
-        modals = soup.find_all(
-            "div",
-            attrs={"data-region": "block_coursecatalog_course_modal"}
-        )
-        print(f"Cursos encontrados: {len(modals)}")
-        for modal in modals:
-            datos = self.__extract_modal_fields(modal)
-            texto = modal.get_text(" ", strip=True)
-            metadata = self.__extract_metadata(texto)
-            self.data.append({
-                "id_curso": modal.get("id"),
-                "origen": "Formación Abierta",
-                "titulo": datos["titulo"],
-                "url": "",
-                "estado": metadata["estado"],
-                "modalidad": metadata["modalidad"],
-                "duracion": metadata["duracion"],
-                "fechas": metadata["fechas"],
-                "descripcion": datos["descripcion"],
-                "objetivos": datos["objetivos"],
-                "competencia_digital": datos["competencia_digital"],
-                "publico_objetivo": datos["publico_objetivo"],
-                "requisitos": datos["requisitos"]
-            })
+        pages = self.__get_formacion_abierta_pages()
+        print(f"Páginas encontradas: {len(pages)}")
+        for html in pages:
+            soup = get_soup(html)
+            modals = soup.find_all("div",attrs={"data-region":"block_coursecatalog_course_modal"})
+            print(f"Cursos encontrados: {len(modals)}")
+            for modal in modals:
+                datos = self.__extract_modal_fields(modal)
+                texto = modal.get_text(" ",strip=True)
+                metadata = self.__extract_metadata(texto)
+                self.data.append({
+                    "id_curso": modal.get("id"),
+                    "origen": "Formación Abierta",
+                    "titulo": datos["titulo"],
+                    "url": "",
+                    "estado": metadata["estado"],
+                    "modalidad": metadata["modalidad"],
+                    "duracion": metadata["duracion"],
+                    "fechas": metadata["fechas"],
+                    "descripcion": datos["descripcion"],
+                    "objetivos": datos["objetivos"],
+                    "competencia_digital": datos["competencia_digital"],
+                    "publico_objetivo": datos["publico_objetivo"],
+                    "requisitos": datos["requisitos"]
+                })
     
     def scrape(self):
         print("Extrayendo cursos de Formación Abierta...")
