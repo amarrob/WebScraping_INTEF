@@ -58,6 +58,13 @@ class CursosScraper():
         match = re.search(r"courseModal_\d+_(\d+)", target)
         return match.group(1) if match else None
     
+    def __get_course_url(self, modal):
+        for a in modal.find_all("a", href=True):
+            href = a["href"]
+            if "course/view.php?id=" in href:
+                return href
+        return ""
+    
     def __extract_metadata(self, text):
         modalidad = re.search(r"\b(MOOC|NOOC|SPOOC|Curso)\b",text,re.I)
         duracion = re.search(r"\d+\s*(?:horas|h)",text,re.I)
@@ -155,7 +162,7 @@ class CursosScraper():
                     "id_curso": modal.get("id"),
                     "origen": "Formación Abierta",
                     "titulo": datos["titulo"],
-                    "url": "",
+                    "url": self.__get_course_url(modal),
                     "estado": metadata["estado"],
                     "modalidad": metadata["modalidad"],
                     "duracion": metadata["duracion"],
@@ -166,7 +173,7 @@ class CursosScraper():
                     "publico_objetivo": datos["publico_objetivo"],
                     "requisitos": datos["requisitos"]
                 })
-    
+        
     def scrape(self):
         print("Extrayendo cursos de Formación Abierta...")
         self.scrape_formacion_abierta()
@@ -192,3 +199,4 @@ class CursosScraper():
         sample_file = filename.replace(".csv", "_sample.csv")
         df.head(20).to_csv(sample_file,index=False,encoding="utf-8-sig")
         print(f"Muestra guardada correctamente en: {sample_file}")
+        df[df["origen"] == "Formación Abierta"][["titulo", "url"]].head(20)
