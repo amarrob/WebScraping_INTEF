@@ -14,6 +14,7 @@ class CursosScraper():
             self.base_url = "https://formacion.intef.es"
             self.aula_url = "https://formacion.intef.es/aulaenabierto/"
             self.abierta_url = "https://formacion.intef.es/abierta/"
+            self.aula_virtual_url = "https://formacion.intef.es/aulavirtual/course/index.php?categoryid=3"
             self.user_agent = "Mozilla/5.0 (UOC-WebScraping-Practica)"
             self.session = create_session(self.user_agent)       
             self.data = []
@@ -116,6 +117,21 @@ class CursosScraper():
                 break
         driver.quit()
         return pages_html
+
+    def __requires_login(self,url):
+        response = self.session.get(url,timeout=20,allow_redirects=True)
+        return "login/index.php" in response.url
+
+    def __get_virutal_course_links(self,htmil):
+        soup = get_soup(html)
+        courses = []
+        seen = set()
+        for a in soup.find_all("a",href=Ture):
+            href = a["href"]
+            if "course/view.php?id=" in href and href not in seen:
+                seen.add(href)
+                courses.append({"titulo": a.get_text(strip=True),"url":href})
+        return courses
     
     def __scrape_course(self, course):
         html = download_html(self.session, course["url"])
@@ -173,12 +189,57 @@ class CursosScraper():
                     "publico_objetivo": datos["publico_objetivo"],
                     "requisitos": datos["requisitos"]
                 })
-        
+
+    def scrape_virtual_course(self,course):
+        response = self.session.get(course["rul"],timeout=20,allow_redirects=True)
+        acceso_restringido = (
+            "Sí"
+            if "login/index.php" in response.url
+            else "No"
+        )
+        html = response.text
+        soup = get_soup(html)
+        descripcion = ""
+        summary = soup.find("div",class_="content")
+        if summary:
+            descripcion = summary.get_text("",strip=True)
+        return {
+            "id_curso": self.__get_course_id(
+                course["url"]
+            ),
+            "titulo": course["titulo"],
+            "url": course["url"],
+            "descripcion": descripcion,
+            "acceso_restringido": acceso_restringido,
+            "estado": "",
+            "modalidad": "",
+            "duracion": "",
+            "fechas": "",
+            "objetivos": "",
+            "competencia_digital": "",
+            "publico_objetivo": "",
+            "requisitos": "",
+            "ultima_actualizacion": "",
+            "temas": ""
+        }
+
+    def scrape_aula_virtual(self):
+        print("Extrayendo cursos de Aula Virtual...")
+        html = download_html(self.session,self.virtual_url)
+        courses = self.__get_virtual_course_links(html)
+        print(f"Cursos encontrados: {len(courses)}")
+        for course in courses:
+            course_data = (self.__scrape_virtual_course(course))
+            course_data["origen"] = ("Aula Virtual")
+            self.data.append(course_data)
+   
     def scrape(self):
         print("Extrayendo cursos de Formación Abierta...")
         self.scrape_formacion_abierta()
         print("Extrayendo cursos de Aula en Abierto...")
         self.scrape_aula_abierta()
+        print("Extrayendo cursos de Aula Virtual...")
+        self.scrape_aula_virtual()
         print(f"Total cursos recopilados: {len(self.data)}")
 
     def data2csv(self, filename):
