@@ -118,15 +118,11 @@ class CursosScraper():
         driver.quit()
         return pages_html
 
-    def __requires_login(self,url):
-        response = self.session.get(url,timeout=20,allow_redirects=True)
-        return "login/index.php" in response.url
-
-    def __get_virutal_course_links(self,htmil):
+    def __get_virtual_course_links(self,html):
         soup = get_soup(html)
         courses = []
         seen = set()
-        for a in soup.find_all("a",href=Ture):
+        for a in soup.find_all("a",href=True):
             href = a["href"]
             if "course/view.php?id=" in href and href not in seen:
                 seen.add(href)
@@ -191,7 +187,7 @@ class CursosScraper():
                 })
 
     def scrape_virtual_course(self,course):
-        response = self.session.get(course["rul"],timeout=20,allow_redirects=True)
+        response = self.session.get(course["url"],timeout=20,allow_redirects=True)
         acceso_restringido = (
             "Sí"
             if "login/index.php" in response.url
@@ -204,9 +200,7 @@ class CursosScraper():
         if summary:
             descripcion = summary.get_text("",strip=True)
         return {
-            "id_curso": self.__get_course_id(
-                course["url"]
-            ),
+            "id_curso": self.__get_course_id(course["url"]),
             "titulo": course["titulo"],
             "url": course["url"],
             "descripcion": descripcion,
@@ -225,11 +219,11 @@ class CursosScraper():
 
     def scrape_aula_virtual(self):
         print("Extrayendo cursos de Aula Virtual...")
-        html = download_html(self.session,self.virtual_url)
+        html = download_html(self.session,self.aula_virtual_url)
         courses = self.__get_virtual_course_links(html)
         print(f"Cursos encontrados: {len(courses)}")
         for course in courses:
-            course_data = (self.__scrape_virtual_course(course))
+            course_data = (self.scrape_virtual_course(course))
             course_data["origen"] = ("Aula Virtual")
             self.data.append(course_data)
    
@@ -246,6 +240,8 @@ class CursosScraper():
         print("\nProceso finalizado.")
         print(f"Número de cursos encontrados: {len(self.data)}")
         df = pd.DataFrame(self.data)
+        if "acceso_restringido" in df.columns:
+            df["acceso_restringido"] = df["acceso_restringido"].fillna("No")
         print("\nPrimeros registros:")
         print(df.head())
         print("\nInformación del dataset:")
